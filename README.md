@@ -134,10 +134,17 @@ fastboot reboot
 
 ---
 
-## Prebuilt Binary Checksums (`v5.15.220-sabrina-docker+ #12`)
+## Prebuilt Images & Checksums (`v5.15.220-sabrina-docker+ #12`)
 
-- `Image_docker` SHA-256: `13f2933cfd2fb7247f3cb9369c42d463c134f186f4c65f5e977c814da047e1ac`
-- `Image_docker.lzma` SHA-256: `bb1a4e162c39ad4fcbe2ba1cb70880750f9fc254ae81dd33fc8127c354db0326`
+Prebuilt binaries are attached to the [GitHub Release (`v5.15.220-sabrina-docker-r12`)](https://github.com/187rider/sabrina-docker-kernel/releases/tag/v5.15.220-sabrina-docker-r12):
+
+| File | Description | SHA-256 |
+| --- | --- | --- |
+| `sabrina_docker_magisk_boot.img` | **Custom** `#12` Docker kernel (`Image_docker.lzma`) + 32-bit Magisk ramdisk (`16 MiB`) | `a57fcef6fc42bd712a7dd90b642243b4a15a22e06da576924851d1eba5d242de` |
+| `stock_boot.img` | Unpatched **stock** `UTTC.250917.004` `boot.img` (`16 MiB`) | `c4cb0f2e405227e058d367b4ced20fa49fdc0cc89686c0c8dff5b6e3fa115934` |
+| `stock_magisk_arm32_boot.img` | Stock kernel + 32-bit Magisk ramdisk (`16 MiB`, base used for repacking) | `56db95c2076583e9c7d81e052cda0d27f71c017ac10e8054e59a828e64f102dd` |
+| `Image_docker.lzma` | Compressed custom kernel image (`8.8 MiB`) | `bb1a4e162c39ad4fcbe2ba1cb70880750f9fc254ae81dd33fc8127c354db0326` |
+| `Image_docker` | Uncompressed custom kernel `Image` (build output) | `13f2933cfd2fb7247f3cb9369c42d463c134f186f4c65f5e977c814da047e1ac` |
 
 ## License
 
