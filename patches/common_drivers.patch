@@ -1,0 +1,594 @@
+diff --git a/drivers/debug/sched.c b/drivers/debug/sched.c
+index ea335da..ca4cbad 100644
+--- a/drivers/debug/sched.c
++++ b/drivers/debug/sched.c
+@@ -328,7 +328,7 @@ static int task_interactive_score(struct task_struct *p, unsigned long weight, i
+ 	prio_score = (sched_task_high_prio - p->prio) * 10;
+ 
+ 	if (!ignore_wait) {
+-		delta = rq_clock(rq_of(p->se.cfs_rq)) - p->android_kabi_reserved1;
++		delta = rq_clock(rq_of(p->se.cfs_rq)) - p->android_oem_data1[0];
+ 		delta = delta >> 20;
+ 		wait_score = delta * 10; //wait 1ms = 10, 10ms = 100, 20ms = 200;
+ 
+@@ -342,7 +342,7 @@ static int task_interactive_score(struct task_struct *p, unsigned long weight, i
+ 	if (sched_pick_next_task_debug)
+ 		aml_trace_printk("interactive_task: %s/%d score:%d/%d,%d,%d,%d, wait:%llu util=%lu\n",
+ 			     p->comm, p->pid, score, weight_score, prio_score, wait_score, util_score,
+-			     p->android_kabi_reserved1, p->se.avg.util_avg);
++			     p->android_oem_data1[0], p->se.avg.util_avg);
+ 
+ 	return score;
+ }
+@@ -573,11 +573,11 @@ static void __maybe_unused sched_show_task_hook(void *data, struct task_struct *
+ 		p->se.sum_exec_runtime,
+ 		p->se.avg.runnable_avg,
+ 		p->se.avg.util_avg,
+-		p->android_kabi_reserved1,
+-		p->android_kabi_reserved2,
+-		p->android_kabi_reserved3,
+-		p->android_kabi_reserved4,
+-		p->android_kabi_reserved5,
++		p->android_oem_data1[0],
++		p->android_oem_data1[1],
++		p->android_oem_data1[2],
++		p->android_oem_data1[3],
++		p->android_oem_data1[4],
+ 		p->rcu_read_lock_nesting);
+ }
+ 
+@@ -587,21 +587,21 @@ static void sched_switch_hook(void *data, bool mode, struct task_struct *prev,
+ 	unsigned long long now;
+ 
+ 	now = sched_clock();
+-	next->android_kabi_reserved2 = now; //last in cpu time
+-	prev->android_kabi_reserved3 = now; //last off cpu time
++	next->android_oem_data1[1] = now; //last in cpu time
++	prev->android_oem_data1[2] = now; //last off cpu time
+ 	if (prev->__state & TASK_INTERRUPTIBLE || prev->__state & TASK_UNINTERRUPTIBLE)
+-		prev->android_kabi_reserved4 = now; //last sleep time
++		prev->android_oem_data1[3] = now; //last sleep time
+ }
+ 
+ static void enqueue_task_hook(void *data, struct rq *rq, struct task_struct *p, int flags)
+ {
+ 	if (p->__state == TASK_WAKING)
+-		p->android_kabi_reserved1 = sched_clock(); //last wakeup time
++		p->android_oem_data1[0] = sched_clock(); //last wakeup time
+ }
+ 
+ static void tick_entry_hook(void *data, struct rq *rq)
+ {
+-	current->android_kabi_reserved5 = sched_clock(); //last tick time
++	current->android_oem_data1[4] = sched_clock(); //last tick time
+ }
+ 
+ #if CONFIG_AMLOGIC_KERNEL_VERSION == 14515
+diff --git a/drivers/media/common/codec_mm/dmabuf_manage.c b/drivers/media/common/codec_mm/dmabuf_manage.c
+index ccafc7c..137f17e 100644
+--- a/drivers/media/common/codec_mm/dmabuf_manage.c
++++ b/drivers/media/common/codec_mm/dmabuf_manage.c
+@@ -871,6 +871,14 @@ static long dmabuf_manage_export_dmabuf(unsigned long args)
+ 	case DMA_BUF_TYPE_DMABUF:
+ 		fd_flags = O_RDWR | O_CLOEXEC;
+ 		break;
++	case DMA_BUF_TYPE_DMX_ES:
++		block->priv = kzalloc(sizeof(struct dmabuf_dmx_sec_es_data), GFP_KERNEL);
++		if (!block->priv) {
++			pr_error("kmalloc failed\n");
++			goto error_alloc_object;
++		}
++		memcpy(block->priv, &info.buffer.dmxes, sizeof(struct dmabuf_dmx_sec_es_data));
++		break;
+ 	case DMA_BUF_TYPE_VIDEODEC_ES:
+ 		fd_flags = O_RDWR | O_CLOEXEC;
+ 		vdecdata = kzalloc(sizeof(*vdecdata), GFP_KERNEL);
+@@ -1006,6 +1014,10 @@ static long dmabuf_manage_get_dmabufinfo(unsigned long args)
+ 		info.size = block->size;
+ 		info.handle = block->handle;
+ 		switch (info.type) {
++		case DMA_BUF_TYPE_DMX_ES:
++			memcpy(&info.buffer.dmxes, block->priv,
++				sizeof(struct dmabuf_dmx_sec_es_data));
++			break;
+ 		case DMA_BUF_TYPE_VIDEODEC_ES:
+ 			memcpy(&info.buffer.vdecdata, block->priv,
+ 				sizeof(struct dmabuf_videodec_es_data));
+@@ -1211,6 +1223,7 @@ void *dmabuf_manage_get_info(struct dma_buf *dbuf, unsigned int type)
+ 		case DMA_BUF_TYPE_DMABUF:
+ 			buf = block;
+ 			break;
++		case DMA_BUF_TYPE_DMX_ES:
+ 		case DMA_BUF_TYPE_VIDEODEC_ES:
+ 			buf = block->priv;
+ 			break;
+diff --git a/drivers/media/common/uvm/meson_uvm_core.c b/drivers/media/common/uvm/meson_uvm_core.c
+index 0f4f0e6..26d367b 100644
+--- a/drivers/media/common/uvm/meson_uvm_core.c
++++ b/drivers/media/common/uvm/meson_uvm_core.c
+@@ -48,13 +48,9 @@ static void uvm_handle_destroy(struct kref *kref)
+ 
+ 	handle = container_of(kref, struct uvm_handle, ref);
+ 	if (handle->ua) {
+-		if (handle->ua->sgt[0]) {
+-			sg_free_table(handle->ua->sgt[0]);
+-			kfree(handle->ua->sgt[0]);
+-		}
+-		if (handle->ua->sgt[1]) {
+-			sg_free_table(handle->ua->sgt[1]);
+-			kfree(handle->ua->sgt[1]);
++		if (handle->ua->sgt) {
++			sg_free_table(handle->ua->sgt);
++			kfree(handle->ua->sgt);
+ 		}
+ 	}
+ 
+@@ -86,7 +82,7 @@ static struct sg_table
+ 
+ 	UVM_PRINTK(UVM_INFO, "%s called, %s. name=%s gpu_access:%d\n",
+ 		__func__, current->comm, dev_name(attachment->dev), gpu_access);
+-	sgt = ua->sgt[0];
++	sgt = ua->sgt;
+ 	if ((ua->flags & BIT(UVM_SKIP_REALLOC)) ||
+ 		(ua->flags & BIT(UVM_SECURE_ALLOC)) ||
+ 		(force_skip_realloc & BIT(UVM_DEBUG_SKIP_REALLOC_IN_MAP)))
+@@ -96,7 +92,7 @@ static struct sg_table
+ 		if (ua->delay_alloc(dmabuf, ua->obj))
+ 			UVM_PRINTK(UVM_INFO, "gpu delay alloc fail\n");
+ 		else
+-			sgt = ua->sgt[1];
++			sgt = ua->sgt;
+ 	}
+ 
+ 	if (ua->flags & BIT(UVM_IMM_ALLOC) && gpu_access && !skip_realloc) {
+@@ -105,12 +101,12 @@ static struct sg_table
+ 		if (ua->gpu_realloc(dmabuf, ua->obj, ua->scalar))
+ 			UVM_PRINTK(UVM_INFO, "gpu_realloc fail\n");
+ 		else
+-			sgt = ua->sgt[1];
++			sgt = ua->sgt;
+ 	}
+ 
+-	if (ua->flags & BIT(UVM_FBC_DEC) && ua->sgt[1]) {
++	if (ua->flags & BIT(UVM_FBC_DEC) && ua->sgt) {
+ 		UVM_PRINTK(UVM_DBG, "surfacetexture 1:1 temporary path\n");
+-		sgt = ua->sgt[1];
++		sgt = ua->sgt;
+ 	}
+ 
+ 	if (!sgt) {
+@@ -162,7 +158,7 @@ static void meson_uvm_unmap_dma_buf(struct dma_buf_attachment *attachment,
+ 		return;
+ 	}
+ 
+-	if (sgt != ua->sgt[0] && sgt != ua->sgt[1]) {
++	if (sgt != ua->sgt) {
+ 		UVM_PRINTK(UVM_ERROR, "%s called skip,sgt have free.\n", __func__);
+ 		return;
+ 	}
+@@ -240,11 +236,7 @@ static int meson_uvm_vmap(struct dma_buf *dmabuf, struct dma_buf_map *map)
+ 	void *vaddr;
+ 
+ 	handle = dmabuf->priv;
+-	if (handle->ua && ((handle->ua->flags & BIT(UVM_IMM_ALLOC)) ||
+-	    !handle->ua->sgt[1]))
+-		sgt = handle->ua->sgt[0];
+-	else
+-		sgt = handle->ua->sgt[1];
++	sgt = handle->ua ? handle->ua->sgt : NULL;
+ 	if (!sgt) {
+ 		UVM_PRINTK(UVM_ERROR, "buffer was not allocated.\n");
+ 		return -ENOMEM;
+@@ -301,11 +293,7 @@ static int meson_uvm_mmap(struct dma_buf *dmabuf, struct vm_area_struct *vma)
+ 
+ 	UVM_PRINTK(UVM_INFO, "%s called.\n", __func__);
+ 
+-	if (handle->ua && ((handle->ua->flags & BIT(UVM_IMM_ALLOC)) ||
+-	    !handle->ua->sgt[1]))
+-		table = handle->ua->sgt[0];
+-	else
+-		table = handle->ua->sgt[1];
++	table = handle->ua ? handle->ua->sgt : NULL;
+ 
+ 	if (!table) {
+ 		UVM_PRINTK(UVM_ERROR, "buffer was not allocated.\n");
+@@ -511,7 +499,7 @@ int dmabuf_bind_uvm_alloc(struct dma_buf *dmabuf, struct uvm_alloc_info *info)
+ 	}
+ 
+ 	if (info->sgt)
+-		ua->sgt[0] = uvm_copy_sgt(info->sgt);
++		ua->sgt = uvm_copy_sgt(info->sgt);
+ 
+ 	return 0;
+ }
+@@ -532,11 +520,11 @@ int dmabuf_bind_uvm_delay_alloc(struct dma_buf *dmabuf,
+ 	ua = handle->ua;
+ 
+ 	if (info->sgt) {
+-		if (ua->sgt[1]) {
+-			sg_free_table(ua->sgt[1]);
+-			kfree(ua->sgt[1]);
++		if (ua->sgt) {
++			sg_free_table(ua->sgt);
++			kfree(ua->sgt);
+ 		}
+-		ua->sgt[1] = uvm_copy_sgt(info->sgt);
++		ua->sgt = uvm_copy_sgt(info->sgt);
+ 	}
+ 
+ 	return 0;
+diff --git a/drivers/media/video_processor/video_composer/video_composer.c b/drivers/media/video_processor/video_composer/video_composer.c
+index a50e801..78b65cf 100644
+--- a/drivers/media/video_processor/video_composer/video_composer.c
++++ b/drivers/media/video_processor/video_composer/video_composer.c
+@@ -519,32 +519,10 @@ static void video_timeline_update(struct composer_dev *dev, struct vframe_s *vf)
+ 	rendered = vf->rendered;
+ 	repeat_count = vf->repeat_count;
+ 
+-	switch (vf->dec_fence_status) {
+-	case DEC_FENCE_SUCCESS:
+-		vc_print(dev->index, PRINT_FENCE,
+-			"%s: dec fence success, ready to put dec fence:%px\n",
+-			__func__, vf->fence);
+-		dma_fence_put(vf->fence);
+-		if (last_buffer_status == VC_FENCE_DEC_ERR)
+-			buffer_status = VC_FENCE_RELEASED;
+-		else if (rendered)
+-			buffer_status = VC_FENCE_NORMAL;
+-		else
+-			buffer_status = VC_FENCE_WAIT;
+-		break;
+-	case DEC_FENCE_INVALID:
+-		if (rendered)
+-			buffer_status = VC_FENCE_NORMAL;
+-		else
+-			buffer_status = VC_FENCE_WAIT;
+-		break;
+-	case DEC_FENCE_ERR:
+-		buffer_status = VC_FENCE_DEC_ERR;
+-		break;
+-	default:
+-		buffer_status = VC_FENCE_INVALID;
+-		break;
+-	}
++	if (rendered)
++		buffer_status = VC_FENCE_NORMAL;
++	else
++		buffer_status = VC_FENCE_WAIT;
+ 
+ 	switch (buffer_status) {
+ 	case VC_FENCE_DEC_ERR:
+@@ -555,7 +533,7 @@ static void video_timeline_update(struct composer_dev *dev, struct vframe_s *vf)
+ 			last_normal_vf = current_display_vf;
+ 			new_display_vf = last_normal_vf;
+ 		}
+-		if (new_display_vf && new_display_vf->dec_fence_status == DEC_FENCE_SUCCESS) {
++		if (new_display_vf) {
+ 			normal_frame_count = 1 + new_display_vf->repeat_count;
+ 			vc_print(dev->index, PRINT_OTHER,
+ 				"err vf, need drop frame_index:%d, count:%d",
+@@ -1170,13 +1148,6 @@ static void display_q_uninit(struct composer_dev *dev)
+ 					 "vc: unit repeat_count=%d, frame_index=%d\n",
+ 					 repeat_count,
+ 					 dis_vf->frame_index);
+-				if (dis_vf->fence &&
+-					dis_vf->dec_fence_status == DEC_FENCE_SUCCESS) {
+-					vc_print(dev->index, PRINT_FENCE,
+-						 "vc: unit put fence=%px\n",
+-						 dis_vf->fence);
+-					dma_fence_put(dis_vf->fence);
+-				}
+ 				for (i = 0; i <= repeat_count; i++) {
+ 					fput(dis_vf->file_vf);
+ 					total_put_count++;
+@@ -1516,11 +1487,6 @@ void videocomposer_vf_put(struct vframe_s *vf, void *op_arg)
+ 		src_frame_index[0] = vd_prepare->src_frame->frame_index;
+ 		dst_frame_index[0] = vd_prepare->dst_frame.frame_index;
+ 		vd_prepare_data_q_put(dev, vd_prepare);
+-		if (vf->type_ext & VIDTYPE_EXT_LCEVC) {
+-			vc_print(dev->index, PRINT_OTHER, "put enhance vf:%px\n", vf->enhance_vf);
+-			if (!kfifo_put(&dev->free_q, vf->enhance_vf))
+-				vc_print(dev->index, PRINT_ERROR, "put free_q is full\n");
+-		}
+ 	} else if (is_mosaic_22) {
+ 		vd_prepare = container_of(vf, struct vd_prepare_s, dst_frame);
+ 		for (i = 0; i < 4; i++) {
+@@ -3256,13 +3222,7 @@ static void video_wait_decode_fence(struct composer_dev *dev,
+ 			 "%s, fence %lx, state: %d, wait cost time: %lld ns\n",
+ 			 __func__, (ulong)fence_tmp, ret,
+ 			 local_clock() - timestamp);
+-		ret = dma_fence_get_status(fence_tmp);
+-		if (ret > 0)
+-			vf->dec_fence_status = DEC_FENCE_SUCCESS;
+-		else if (ret < 0)
+-			vf->dec_fence_status = DEC_FENCE_ERR;
+-		else
+-			vc_print(dev->index, PRINT_ERROR, "dec error, fence timeout\n");
++		vf->fence = NULL;
+ 	} else {
+ 		vc_print(dev->index, PRINT_FENCE,
+ 			 "decoder fence is NULL\n");
+@@ -3520,16 +3480,9 @@ static bool set_vf_lcevc_data(struct composer_dev *dev,
+ 		| VFRAME_FLAG_VIDEO_COMPOSER_BYPASS;
+ 	enhance_vf->type_ext = VIDTYPE_EXT_LCEVC;
+ 	enhance_vf->bitdepth = BITDEPTH_Y10 | BITDEPTH_U10 | BITDEPTH_V10 | FULL_PACK_422_MODE;
+-	memcpy(&enhance_vf->scaler_coeff, &lcevc_data->upsample_kernel, sizeof(struct vf_lcevc_t));
+-	len = enhance_vf->scaler_coeff.len;
++	len = 0;
++	(void)i;
+ 	vc_print(dev->index, PRINT_INDEX_DISP, "task: coeff len:%d", len);
+-	for (i = 0; i < len; i++) {
+-		vc_print(dev->index, PRINT_INDEX_DISP,
+-				"task: coeff[%d] %d %d\n",
+-				i,
+-				enhance_vf->scaler_coeff.k[0][i],
+-				enhance_vf->scaler_coeff.k[1][i]);
+-	}
+ 	vc_print(dev->index, PRINT_INDEX_DISP,
+ 		"task: enhance_vf width:%d, height:%d, enhance_vf yuv addr:%px\n",
+ 		enhance_vf->width,
+@@ -3947,17 +3900,12 @@ static void video_composer_task(struct composer_dev *dev)
+ 			vf_ext->crop[2] = vf->crop[2];
+ 			vf_ext->crop[3] = vf->crop[3];
+ 			vf_ext->zorder = vf->zorder;
+-			vf_ext->dec_set_screen_mode = vf->dec_set_screen_mode;
+ 			vf_ext->flag |= VFRAME_FLAG_VIDEO_COMPOSER
+ 				| VFRAME_FLAG_VIDEO_COMPOSER_BYPASS;
+ 		}
+ 
+ 		if (is_repeat_vf) {
+ 			vf->repeat_count++;
+-			if (vf->type_ext & VIDTYPE_EXT_LCEVC) {
+-				enhance_vf = vf->enhance_vf;
+-				enhance_vf->repeat_count = vf->repeat_count;
+-			}
+ 			vc_print(dev->index, PRINT_FENCE,
+ 				 "repeat =%d, frame_index=%d\n",
+ 				 vf->repeat_count,
+@@ -4016,11 +3964,9 @@ static void video_composer_task(struct composer_dev *dev)
+ 							"task: lcevc data is NULL!\n");
+ 					else
+ 						enhance_vf = get_enhance_vf_pointer(dev, vf);
+-					if (set_vf_lcevc_data(dev, enhance_vf, lcevc_data)) {
+-						vf->enhance_vf = enhance_vf;
+-						enhance_vf = vf;
+-						vf = vf->enhance_vf;
+-						vf->enhance_vf = enhance_vf;
++					if (false && set_vf_lcevc_data(dev, enhance_vf, lcevc_data)) {
++						vc_print(dev->index, PRINT_ERROR,
++							"task: lcevc enhance_vf disabled\n");
+ 					} else {
+ 						vc_print(dev->index, PRINT_ERROR,
+ 							"task: set lcevc data failed\n");
+diff --git a/drivers/media/video_processor/video_composer/videodisplay.c b/drivers/media/video_processor/video_composer/videodisplay.c
+index 4eff81a..33e4731 100644
+--- a/drivers/media/video_processor/video_composer/videodisplay.c
++++ b/drivers/media/video_processor/video_composer/videodisplay.c
+@@ -131,7 +131,7 @@ static void vc_notify_msg_to_mediaproxy(struct vframe_s *vf, int index,
+ 	memset(&msg, 0, sizeof(struct aml_video_user_data));
+ 	msg.data.frame_info.bitstreamid = div64_u64(vf->timestamp, 1000000000);
+ 	msg.data.frame_info.vd_instid = index;
+-	msg.data.frame_info.decoder_instid = vf->decoder_instid;
++	msg.data.frame_info.decoder_instid = 0;
+ 	msg.data.frame_info.frame_index = vf->frame_index;
+ 	msg.data.frame_info.time = 1000000000L * ts.tv_sec + ts.tv_nsec;
+ 	msg.message_type = event;
+@@ -938,18 +938,6 @@ static struct vframe_s *vc_vf_get(void *op_arg)
+ 			dev->last_err_vf = NULL;
+ 		}
+ 
+-		if (vf->dec_fence_status == DEC_FENCE_SUCCESS) {
+-			vc_print(dev->index, PRINT_OTHER,
+-				"%s: normal vframe, frame_index:%d fence:%px\n",
+-				__func__, vf->frame_index, vf->fence);
+-			dma_fence_get(vf->fence);
+-		} else if (vf->dec_fence_status == DEC_FENCE_ERR) {
+-			vc_print(dev->index, PRINT_OTHER, "error vframe, need put, index:%d\n",
+-			       vf->frame_index);
+-			dev->last_err_vf = vf;
+-			return NULL;
+-		}
+-
+ 		if (dev->enable_pulldown) {
+ 			dev->patten_factor_index++;
+ 			if (dev->patten_factor_index == PATTEN_FACTOR_MAX)
+@@ -1002,21 +990,6 @@ static void vc_vf_put(struct vframe_s *vf, void *op_arg)
+ 	enable_prelink = dim_get_pre_link();
+ #endif
+ 
+-	if (vf->type_ext & VIDTYPE_EXT_LCEVC) {
+-		vc_print(dev->index, PRINT_OTHER,
+-			"%s: enhance_vf=%px, type:0x%x, flag=0x%x, y_addr=0x%px, width=%d, height=%d\n",
+-			__func__,
+-			vf,
+-			vf->type,
+-			vf->flag,
+-			vf->canvas0_config[0].phy_addr,
+-			vf->width,
+-			vf->height);
+-		vf = vf->enhance_vf;
+-		display_vf = vf->enhance_vf;
+-		vf->rendered = display_vf->rendered;
+-	}
+-
+ 	vc_print(dev->index, PRINT_OTHER,
+ 		"%s: prelink_en=%d, vf=%px(%px), frame_index=%d, vf_type=0x%x, vf_flag=0x%x, vf->timestamp: %lld.\n",
+ 		__func__,
+diff --git a/drivers/media/video_sink/video_func.c b/drivers/media/video_sink/video_func.c
+index 0f736ca..42c5f9a 100644
+--- a/drivers/media/video_sink/video_func.c
++++ b/drivers/media/video_sink/video_func.c
+@@ -3503,9 +3503,8 @@ static struct vframe_s *vdx_swap_frame(u8 layer_id,
+ 			if (new_frame || gvideo_recv[0]->cur_buf) {
+ 				vd_layer[layer_id].dispbuf_mapping =
+ 					&gvideo_recv[0]->cur_buf;
+-				if ((gvideo_recv[0]->cur_buf->type_ext & VIDTYPE_EXT_LCEVC) &&
+-					gvideo_recv[0]->cur_buf->enhance_vf &&
+-					layer_id == 0) {
++				if (false) {
++#if 0
+ 					u32 src_width = 3840, src_height = 2160;
+ 					struct vframe_s *vf = NULL;
+ 					int coef0[4], coef1[4];
+@@ -3578,6 +3577,7 @@ static struct vframe_s *vdx_swap_frame(u8 layer_id,
+ 					vd_layer[1].vd_func.vd_render_frame = vdx_render_frame;
+ #ifdef CONFIG_AMLOGIC_MEDIA_ENHANCEMENT_VECM
+ 					amve_lc_elc_ctrl(lcevc_en);
++#endif
+ #endif
+ 				} else {
+ 					switch_from_lcevc_to_nonlcevc(false);
+@@ -3680,8 +3680,8 @@ static struct vframe_s *vdx_swap_frame(u8 layer_id,
+ 			if (new_frame || cur_dispbuf[0]) {
+ 				vd_layer[layer_id].dispbuf_mapping =
+ 					&cur_dispbuf[0];
+-				if ((cur_dispbuf[0]->type_ext & VIDTYPE_EXT_LCEVC) &&
+-					cur_dispbuf[0]->enhance_vf) {
++				if (false) {
++#if 0
+ 					u32 src_width = 3840, src_height = 2160;
+ 					struct vframe_s *vf = NULL;
+ 					int coef0[4], coef1[4];
+@@ -3751,6 +3751,7 @@ static struct vframe_s *vdx_swap_frame(u8 layer_id,
+ #endif
+ 					hscaler_8tap_enable[0] = false;
+ 					hscaler_8tap_enable[1] = false;
++#endif
+ 				} else {
+ 					switch_from_lcevc_to_nonlcevc(false);
+ 				}
+diff --git a/drivers/media/video_sink/video_low_latency.c b/drivers/media/video_sink/video_low_latency.c
+index accc6cc..b58eaaa 100644
+--- a/drivers/media/video_sink/video_low_latency.c
++++ b/drivers/media/video_sink/video_low_latency.c
+@@ -589,8 +589,8 @@ static int lowlatency_vsync(u8 instance_id)
+ 		}
+ 		if (new_frame || gvideo_recv[0]->cur_buf) {
+ 			vd_layer[0].dispbuf_mapping = &gvideo_recv[0]->cur_buf;
+-			if ((gvideo_recv[0]->cur_buf->type_ext & VIDTYPE_EXT_LCEVC) &&
+-				gvideo_recv[0]->cur_buf->enhance_vf) {
++			if (false) {
++#if 0
+ 				u32 src_width = 3840, src_height = 2160;
+ 				struct vframe_s *vf = NULL;
+ 				int coef0[4], coef1[4];
+@@ -661,6 +661,7 @@ static int lowlatency_vsync(u8 instance_id)
+ #endif
+ 				hscaler_8tap_enable[0] = false;
+ 				hscaler_8tap_enable[1] = false;
++#endif
+ 			} else {
+ 				switch_from_lcevc_to_nonlcevc(false);
+ 				if (video_lcevc.lcevc_switch_normal) {
+diff --git a/drivers/media/video_sink/vpp.c b/drivers/media/video_sink/vpp.c
+index 3e61b18..4e82b2d 100644
+--- a/drivers/media/video_sink/vpp.c
++++ b/drivers/media/video_sink/vpp.c
+@@ -5452,8 +5452,6 @@ RERTY:
+ 
+ 	process_3d_type = local_input.proc_3d_type;
+ 	wide_mode = local_input.wide_mode;
+-	if (vf->dec_set_screen_mode == VIDEO_OPTION_NORMAL)
+-		wide_mode = VIDEO_WIDEOPTION_NORMAL;
+ 
+ 	next_frame_par->VPP_post_blend_vd_v_start_ = 0;
+ 	next_frame_par->VPP_post_blend_vd_h_start_ = 0;
+@@ -5475,7 +5473,7 @@ RERTY:
+ 		pr_info("layer%d:vf->compWidth=%d, vf->compHeight=%d, vf->width=%d, vf->height=%d, dec_set_screen_mode=%d, op_flag=%x\n",
+ 			input->layer_id,
+ 			vf->compWidth, vf->compHeight,
+-			vf->width, vf->height, vf->dec_set_screen_mode,
++			vf->width, vf->height, 0,
+ 			op_flag);
+ #if defined(TV_3D_FUNCTION_OPEN) && defined(CONFIG_AMLOGIC_MEDIA_TVIN)
+ 	/*
+diff --git a/include/dt-bindings/clock/amlogic,g12a-clkc.h b/include/dt-bindings/clock/amlogic,g12a-clkc.h
+index 01c5e42..58f1758 100644
+--- a/include/dt-bindings/clock/amlogic,g12a-clkc.h
++++ b/include/dt-bindings/clock/amlogic,g12a-clkc.h
+@@ -269,9 +269,12 @@
+ #define CLKID_24M_CLK_GATE			260
+ #define CLKID_12M_CLK_DIV			261
+ #define CLKID_12M_CLK_GATE			262
++#define CLKID_GEN_CLK_SEL			263
++#define CLKID_GEN_CLK_DIV			264
++#define CLKID_GEN_CLK				265
+ 
+ /* Media clocks */
+-#define MEDIA_BASE				(263 + 1)
++#define MEDIA_BASE				(265 + 1)
+ #define CLKID_DSI_MEAS_MUX			(MEDIA_BASE + 0)
+ #define CLKID_DSI_MEAS_DIV			(MEDIA_BASE + 1)
+ #define CLKID_DSI_MEAS				(MEDIA_BASE + 2)
+diff --git a/include/linux/amlogic/media/codec_mm/dmabuf_manage.h b/include/linux/amlogic/media/codec_mm/dmabuf_manage.h
+index 2c487e6..96adf9a 100644
+--- a/include/linux/amlogic/media/codec_mm/dmabuf_manage.h
++++ b/include/linux/amlogic/media/codec_mm/dmabuf_manage.h
+@@ -9,7 +9,7 @@
+ #include <linux/ioctl.h>
+ #include <linux/types.h>
+ 
+-#define AML_DMA_BUF_MANAGER_VERSION  2
++#define AML_DMA_BUF_MANAGER_VERSION  1
+ #define VIDEODEC_DATA_MAX_LEN 256
+ #define DMA_BUF_MANAGER_MAX_BUFFER_LEN 320
+ 
+@@ -71,6 +71,7 @@ struct dmabuf_manage_buffer {
+ 	__u32 flags;
+ 	__u32 extend;
+ 	union {
++		struct dmabuf_dmx_sec_es_data dmxes;
+ 		struct dmabuf_videodec_es_data vdecdata;
+ 		__u8 data[DMA_BUF_MANAGER_MAX_BUFFER_LEN];
+ 	} buffer;
+@@ -98,12 +99,12 @@ struct dmabuf_manage_block {
+ 	__u32 handle;
+ 	__u32 type;
+ 	__u32 flags;
++	void *priv;
+ 	__u32 extend;
+ 	__u64 extend_paddr;
+ 	__u64 extend_size;
+ 	__u64 extend_handle;
+ 	__u64 extend_flags;
+-	void *priv;
+ };
+ 
+ struct secure_vdec_channel {
+diff --git a/include/linux/amlogic/media/vfm/vframe.h b/include/linux/amlogic/media/vfm/vframe.h
+index b0b7fa9..cb9f010 100644
+--- a/include/linux/amlogic/media/vfm/vframe.h
++++ b/include/linux/amlogic/media/vfm/vframe.h
+@@ -804,7 +804,6 @@ struct vframe_s {
+ 	u32 codec_vfmt;
+ 	/*for di process NR and cts, storage dec vf*/
+ 	void *vf_ext;
+-	void *enhance_vf;
+ 	u32 di_cm_cnt;
+ 	u32 dwHeadAddr;
+ 	u32 dwBodyAddr;
+@@ -854,11 +853,6 @@ struct vframe_s {
+ 	struct vframe_s *uvm_vf;
+ 	struct vf_lossycomp_param_s vf_lossycomp_param;
+ 	struct src_crop_s src_crop;
+-	u32 decoder_instid;
+-	/*decoder set screen mode, vpp using this 1st priority*/
+-	enum dec_set_screen_mode_t dec_set_screen_mode;
+-	enum dec_fence_status_t dec_fence_status;
+-	struct vf_lcevc_t scaler_coeff;
+ } /*vframe_t */;
+ 
+ #define VC_FLAG_AI_SR		0x1
+diff --git a/include/linux/amlogic/meson_uvm_core.h b/include/linux/amlogic/meson_uvm_core.h
+index 1aea8a9..702a3a0 100644
+--- a/include/linux/amlogic/meson_uvm_core.h
++++ b/include/linux/amlogic/meson_uvm_core.h
+@@ -112,7 +112,7 @@ struct uvm_buf_obj {
+  * @free:	free uvm_buf_obj related
+  */
+ struct uvm_alloc {
+-	struct sg_table *sgt[2];
++	struct sg_table *sgt;
+ 	struct page **pages;
+ 	void *vaddr;
+ 	size_t size;

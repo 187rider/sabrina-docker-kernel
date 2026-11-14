@@ -1,0 +1,12 @@
+# Build outputs & binaries
+out/
+ksrc/
+*.img
+Image
+Image_*
+*.ko
+*.tar.gz
+*.lzma
+__pycache__/
+*.pyc
+.DS_Store

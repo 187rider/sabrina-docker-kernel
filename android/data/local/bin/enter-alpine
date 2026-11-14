@@ -1,0 +1,28 @@
+#!/system/bin/sh
+ROOT=/data/local/alpine
+is_mounted() { grep -q " $1 " /proc/mounts; }
+
+is_mounted "$ROOT" || mount --bind "$ROOT" "$ROOT"
+is_mounted "$ROOT/proc" || mount -t proc proc "$ROOT/proc"
+is_mounted "$ROOT/sys" || mount -t sysfs sysfs "$ROOT/sys"
+is_mounted "$ROOT/sys/fs/cgroup" || mount --bind /sys/fs/cgroup "$ROOT/sys/fs/cgroup"
+is_mounted "$ROOT/sys/fs/bpf" || mount --bind /sys/fs/bpf "$ROOT/sys/fs/bpf"
+is_mounted "$ROOT/dev" || mount --bind /dev "$ROOT/dev"
+is_mounted "$ROOT/dev/pts" || mount -t devpts devpts "$ROOT/dev/pts"
+mkdir -p /dev/shm
+is_mounted "/dev/shm" || mount -t tmpfs tmpfs /dev/shm
+for d in system linkerconfig; do
+  if [ -d "/$d" ]; then
+    mkdir -p "$ROOT/$d"
+    is_mounted "$ROOT/$d" || mount --bind -o ro "/$d" "$ROOT/$d"
+  fi
+done
+mkdir -p "$ROOT/apex"
+is_mounted "$ROOT/apex" || mount --rbind /apex "$ROOT/apex"
+
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+if [ -n "$1" ]; then
+  exec chroot "$ROOT" /bin/sh "$@"
+else
+  exec chroot "$ROOT" /bin/sh -l
+fi

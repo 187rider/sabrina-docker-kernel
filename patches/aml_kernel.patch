@@ -1,0 +1,185 @@
+diff --git a/fs/cifs/cifsfs.c b/fs/cifs/cifsfs.c
+index 3b456aa0d..8f7012194 100644
+--- a/fs/cifs/cifsfs.c
++++ b/fs/cifs/cifsfs.c
+@@ -1795,3 +1795,6 @@ MODULE_SOFTDEP("ccm");
+ MODULE_SOFTDEP("gcm");
+ module_init(init_cifs)
+ module_exit(exit_cifs)
++
++MODULE_IMPORT_NS(VFS_internal_I_am_really_a_filesystem_and_am_NOT_a_driver);
++
+diff --git a/fs/cifs/trace.h b/fs/cifs/trace.h
+index 787b5b3c5..10f5c2e86 100644
+--- a/fs/cifs/trace.h
++++ b/fs/cifs/trace.h
+@@ -1031,6 +1031,6 @@ TRACE_EVENT(smb3_tcon_ref,
+ #endif /* _CIFS_TRACE_H */
+ 
+ #undef TRACE_INCLUDE_PATH
+-#define TRACE_INCLUDE_PATH .
++#define TRACE_INCLUDE_PATH ../../fs/cifs
+ #define TRACE_INCLUDE_FILE trace
+ #include <trace/define_trace.h>
+diff --git a/fs/ntfs3/super.c b/fs/ntfs3/super.c
+index 57af1945a..96a0b0973 100644
+--- a/fs/ntfs3/super.c
++++ b/fs/ntfs3/super.c
+@@ -1514,3 +1514,5 @@ MODULE_ALIAS_FS("ntfs3");
+ 
+ module_init(init_ntfs_fs);
+ module_exit(exit_ntfs_fs);
++
++MODULE_IMPORT_NS(VFS_internal_I_am_really_a_filesystem_and_am_NOT_a_driver);
+diff --git a/include/linux/fs.h b/include/linux/fs.h
+index d41b11292..13590bb35 100644
+--- a/include/linux/fs.h
++++ b/include/linux/fs.h
+@@ -2584,6 +2584,7 @@ struct file_system_type {
+ 	const struct fs_parameter_spec *parameters;
+ 	struct dentry *(*mount) (struct file_system_type *, int,
+ 		       const char *, void *);
++	void *(*alloc_mnt_data) (void);
+ 	void (*kill_sb) (struct super_block *);
+ 	struct module *owner;
+ 	struct file_system_type * next;
+diff --git a/include/linux/mount.h b/include/linux/mount.h
+index 9fc799307..83df0a0a2 100644
+--- a/include/linux/mount.h
++++ b/include/linux/mount.h
+@@ -74,6 +74,7 @@ struct vfsmount {
+ 	struct super_block *mnt_sb;	/* pointer to superblock */
+ 	int mnt_flags;
+ 	struct user_namespace *mnt_userns;
++	void *data;
+ 
+ 	ANDROID_KABI_RESERVE(1);
+ 	ANDROID_KABI_RESERVE(2);
+diff --git a/include/linux/sched.h b/include/linux/sched.h
+index 3414597fe..b10e76520 100644
+--- a/include/linux/sched.h
++++ b/include/linux/sched.h
+@@ -1073,7 +1073,7 @@ struct task_struct {
+ 
+ 	struct nameidata		*nameidata;
+ 
+-#ifdef CONFIG_SYSVIPC
++#if defined(CONFIG_SYSVIPC) && !defined(CONFIG_ANDROID_KABI_RESERVE)
+ 	struct sysv_sem			sysvsem;
+ 	struct sysv_shm			sysvshm;
+ #endif
+@@ -1521,6 +1521,20 @@ struct task_struct {
+ 		unsigned	user_dumpable:1;
+ 		});
+ 
++#if defined(CONFIG_SYSVIPC) && defined(CONFIG_ANDROID_KABI_RESERVE)
++	ANDROID_KABI_USE(2, struct sysv_sem sysvsem);
++	union {
++		struct {
++			_ANDROID_KABI_RESERVE(3);
++			_ANDROID_KABI_RESERVE(4);
++		};
++		struct sysv_shm sysvshm;
++	};
++	ANDROID_KABI_RESERVE(5);
++	ANDROID_KABI_RESERVE(6);
++	ANDROID_KABI_RESERVE(7);
++	ANDROID_KABI_RESERVE(8);
++#else
+ 	ANDROID_KABI_RESERVE(2);
+ 	ANDROID_KABI_RESERVE(3);
+ 	ANDROID_KABI_RESERVE(4);
+@@ -1528,6 +1542,7 @@ struct task_struct {
+ 	ANDROID_KABI_RESERVE(6);
+ 	ANDROID_KABI_RESERVE(7);
+ 	ANDROID_KABI_RESERVE(8);
++#endif
+ 
+ 	/*
+ 	 * New fields for task_struct should be added above here, so that
+diff --git a/scripts/genksyms/genksyms.c b/scripts/genksyms/genksyms.c
+index 0c4d780fb..3f475c0c5 100644
+--- a/scripts/genksyms/genksyms.c
++++ b/scripts/genksyms/genksyms.c
+@@ -638,6 +638,68 @@ static unsigned long expand_and_crc_sym(struct symbol *sym, unsigned long crc)
+ 	return crc;
+ }
+ 
++
++/* STOCK SYMBOL CRC OVERRIDE HOOK */
++struct ref_crc_entry {
++    char *name;
++    unsigned long crc;
++    struct ref_crc_entry *next;
++};
++
++#define REF_CRC_HASH_SIZE 16384
++static struct ref_crc_entry *ref_crc_table[REF_CRC_HASH_SIZE];
++static int ref_crc_loaded = 0;
++
++static unsigned int ref_crc_hash(const char *s)
++{
++    unsigned int h = 5381;
++    while (*s)
++        h = ((h << 5) + h) + (unsigned char)*s++;
++    return h % REF_CRC_HASH_SIZE;
++}
++
++static void load_stock_crcs(const char *path)
++{
++    FILE *f = fopen(path, "r");
++    char line[256];
++    if (!f) return;
++    while (fgets(line, sizeof(line), f)) {
++        unsigned long crc;
++        char name[128];
++        if (sscanf(line, "%lx %127s", &crc, name) == 2 ||
++            sscanf(line, "0x%lx %127s", &crc, name) == 2) {
++            unsigned int h = ref_crc_hash(name);
++            struct ref_crc_entry *e = malloc(sizeof(*e));
++            e->name = strdup(name);
++            e->crc = crc;
++            e->next = ref_crc_table[h];
++            ref_crc_table[h] = e;
++        }
++    }
++    fclose(f);
++    ref_crc_loaded = 1;
++}
++
++static int lookup_stock_crc(const char *name, unsigned long *out_crc)
++{
++    if (!ref_crc_loaded) {
++        const char *p = getenv("GENKSYMS_STOCK_SYMVERS");
++        if (!p) p = "/kbuild/stock_symvers.txt";
++        load_stock_crcs(p);
++    }
++    unsigned int h = ref_crc_hash(name);
++    struct ref_crc_entry *e = ref_crc_table[h];
++    while (e) {
++        if (strcmp(e->name, name) == 0) {
++            *out_crc = e->crc;
++            return 1;
++        }
++        e = e->next;
++    }
++    return 0;
++}
++/* END STOCK SYMBOL CRC OVERRIDE HOOK */
++
+ void export_symbol(const char *name)
+ {
+ 	struct symbol *sym;
+@@ -657,6 +719,12 @@ void export_symbol(const char *name)
+ 		sym->expansion_trail = expansion_trail;
+ 		expansion_trail = sym;
+ 		crc = expand_and_crc_sym(sym, 0xffffffff) ^ 0xffffffff;
++		{
++			unsigned long ref_crc;
++			if (lookup_stock_crc(name, &ref_crc)) {
++				crc = ref_crc;
++			}
++		}
+ 
+ 		sym = expansion_trail;
+ 		while (sym != (struct symbol *)-1L) {
