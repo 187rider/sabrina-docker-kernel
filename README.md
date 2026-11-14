@@ -10,7 +10,7 @@ Brings full **Docker / containerd / runc** support, **WireGuard**, **TCP BBR**, 
 
 - **Device:** Google Chromecast with Google TV 4K (`sabrina`, Amlogic S905D3 / SM1)
 - **OS / Userland:** Stock Android 14 (`32-bit` `armeabi-v7a` userspace on `64-bit` `aarch64` kernel)
-- **Kernel Version:** `5.15.220-android14-sabrina-docker+ #12 SMP PREEMPT` (Clang 17.0.6 + LLD 17.0.6)
+- **Kernel Version:** `5.15.220-android14-sabrina-docker+ #13 SMP PREEMPT` (Clang 17.0.6 + LLD 17.0.6)
 - **Vendor Module ABI Check:** `1636` / `1636` expected vmlinux symbols matched (**`0` mismatched, `0` missing**)
 - **Base Upstream Trees:**
   - `LineageOS/android_kernel_amlogic_kernel-5.15` @ `1c244a9cff6384fb1eddc1a9554fcf116ad9367d`
@@ -46,8 +46,9 @@ Brings full **Docker / containerd / runc** support, **WireGuard**, **TCP BBR**, 
 - **`scripts/genksyms/genksyms.c` (`GENKSYMS_STOCK_SYMVERS`):** Adds an optional lookup against `configs/stock_symvers.txt` during symbol CRC calculation so exported kernel symbols stay compatible with stock `/vendor/lib/modules/*.ko` (`0` mismatched / `0` missing out of `1636`).
 - **`fs/cifs/*` & `fs/ntfs3/super.c`:** Adds `MODULE_IMPORT_NS(VFS_internal_I_am_really_a_filesystem_and_am_NOT_a_driver)` and fixes `fs/cifs/trace.h` `TRACE_INCLUDE_PATH` for out-of-tree/modular builds.
 
-### 2. Amlogic SM1 Clocks & Decoder Struct Alignment (`patches/common_drivers.patch`)
+### 2. Amlogic SM1 Clocks, DRM Hotplug & Decoder Struct Alignment (`patches/common_drivers.patch`)
 - **`include/dt-bindings/clock/amlogic,g12a-clkc.h` (Critical Video Fix):** Inserts `CLKID_GEN_CLK_SEL` (`263`), `CLKID_GEN_CLK_DIV` (`264`), and `CLKID_GEN_CLK` (`265`) and shifts `MEDIA_BASE` from `(263 + 1)` to `(265 + 1)`. This aligns all SM1 media clock IDs (`266..357`) with `sabrina`'s stock DTB so `hevc_mux`, `hevcf_mux`, `vdec_hevc`, and `vdec_hevcf` bind to the right hardware clock controllers without register hangs/watchdog resets during hardware video playback.
+- **`drivers/drm/meson_drv.c` (HDMI Hotplug & Cold-Boot Recovery Fix):** Marks encoders sharing `possible_crtcs` symmetrically clone-compatible (`possible_clones |= drm_encoder_mask(enc_b)`) before `drm_mode_config_reset()`. Upstream `5.15` LTS added `drm_atomic_check_valid_clones()`, which otherwise rejects Amlogic `MesonHwc` multi-encoder states (`HDMI-A-1` + `MESON-DUMMYL`, or `TV-1` `576cvbs` -> `HDMI-A-1`) with `-EINVAL` (`-22`) on hot-unplug/replug or cold-boot recovery.
 - **`drivers/debug/sched.c`:** Uses `android_oem_data1[0..4]` instead of `android_kabi_reserved*`.
 - **`drivers/media/*` & Amlogic media headers (`dmabuf_manage`, `meson_uvm_core`, `vframe.h`, `video_composer`, `video_sink`, `vpp`):** Aligns `uvm_alloc->sgt`, `dmabuf_manage_block`, and `vframe_s` layouts with `sabrina`'s stock vendor video decoder/pipeline modules.
 
@@ -134,17 +135,17 @@ fastboot reboot
 
 ---
 
-## Prebuilt Images & Checksums (`v5.15.220-sabrina-docker+ #12`)
+## Prebuilt Images & Checksums (`v5.15.220-sabrina-docker+ #13`)
 
-Prebuilt binaries are attached to the [GitHub Release (`v5.15.220-sabrina-docker-r12`)](https://github.com/187rider/sabrina-docker-kernel/releases/tag/v5.15.220-sabrina-docker-r12):
+Prebuilt binaries are attached to the [GitHub Release (`v5.15.220-sabrina-docker-r13`)](https://github.com/187rider/sabrina-docker-kernel/releases/tag/v5.15.220-sabrina-docker-r13):
 
 | File | Description | SHA-256 |
 | --- | --- | --- |
-| `sabrina_docker_magisk_boot.img` | **Custom** `#12` Docker kernel (`Image_docker.lzma`) + 32-bit Magisk ramdisk (`16 MiB`) | `a57fcef6fc42bd712a7dd90b642243b4a15a22e06da576924851d1eba5d242de` |
+| `sabrina_docker_magisk_boot.img` | **Custom** `#13` Docker kernel (`Image_docker.lzma`) + 32-bit Magisk ramdisk (`16 MiB`) | `76203629cd01228d41a5175cca1bcca9acaceb34ba11129f6f0eb2ab4ffb1c75` |
 | `stock_boot.img` | Unpatched **stock** `UTTC.250917.004` `boot.img` (`16 MiB`) | `c4cb0f2e405227e058d367b4ced20fa49fdc0cc89686c0c8dff5b6e3fa115934` |
 | `stock_magisk_arm32_boot.img` | Stock kernel + 32-bit Magisk ramdisk (`16 MiB`, base used for repacking) | `56db95c2076583e9c7d81e052cda0d27f71c017ac10e8054e59a828e64f102dd` |
-| `Image_docker.lzma` | Compressed custom kernel image (`8.8 MiB`) | `bb1a4e162c39ad4fcbe2ba1cb70880750f9fc254ae81dd33fc8127c354db0326` |
-| `Image_docker` | Uncompressed custom kernel `Image` (build output) | `13f2933cfd2fb7247f3cb9369c42d463c134f186f4c65f5e977c814da047e1ac` |
+| `Image_docker.lzma` | Compressed custom kernel image (`8.9 MiB`) | `c977c7666074cbe8dc7992028b0baa4667dd880b1fecf7c1e006a3ed717bd022` |
+| `Image_docker` | Uncompressed custom kernel `Image` (build output) | `14ca37f1c711c2f9ba28bd3876829e6213b62d5624d28357a772922d880d00d1` |
 
 ## License
 
