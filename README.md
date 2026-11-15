@@ -10,7 +10,7 @@ Brings full **Docker / containerd / runc** support, **WireGuard**, **TCP BBR**, 
 
 - **Device:** Google Chromecast with Google TV 4K (`sabrina`, Amlogic S905D3 / SM1)
 - **OS / Userland:** Stock Android 14 (`32-bit` `armeabi-v7a` userspace on `64-bit` `aarch64` kernel)
-- **Kernel Version:** `5.15.220-android14-sabrina-docker+ #13 SMP PREEMPT` (Clang 17.0.6 + LLD 17.0.6)
+- **Kernel Version:** `5.15.220-android14-sabrina-docker+ #14 SMP PREEMPT` (Clang 17.0.6 + LLD 17.0.6)
 - **Vendor Module ABI Check:** `1636` / `1636` expected vmlinux symbols matched (**`0` mismatched, `0` missing**)
 - **Base Upstream Trees:**
   - `LineageOS/android_kernel_amlogic_kernel-5.15` @ `1c244a9cff6384fb1eddc1a9554fcf116ad9367d`
@@ -136,17 +136,17 @@ fastboot reboot
 
 ---
 
-## Prebuilt Images & Checksums (`v5.15.220-sabrina-docker+ #13`)
+## Prebuilt Images & Checksums (`v5.15.220-sabrina-docker+ #14`)
 
-Prebuilt binaries are attached to the [GitHub Release (`v5.15.220-sabrina-docker-r13`)](https://github.com/187rider/sabrina-docker-kernel/releases/tag/v5.15.220-sabrina-docker-r13):
+Prebuilt binaries are attached to the [GitHub Release (`v5.15.220-sabrina-docker-r14`)](https://github.com/187rider/sabrina-docker-kernel/releases/tag/v5.15.220-sabrina-docker-r14):
 
 | File | Description | SHA-256 |
 | --- | --- | --- |
-| `sabrina_docker_magisk_boot.img` | **Custom** `#13` Docker kernel (`Image_docker.lzma`) + 32-bit Magisk ramdisk (`16 MiB`) | `76203629cd01228d41a5175cca1bcca9acaceb34ba11129f6f0eb2ab4ffb1c75` |
+| `sabrina_docker_magisk_boot.img` | **Custom** `#14` Docker kernel (`Image_docker.lzma`) + 32-bit Magisk ramdisk (`16 MiB`) | `98ea60a35549c062120273fe3e0094b62902578b4e2f3d8339f8a0d7b901d0e9` |
 | `stock_boot.img` | Unpatched **stock** `UTTC.250917.004` `boot.img` (`16 MiB`) | `c4cb0f2e405227e058d367b4ced20fa49fdc0cc89686c0c8dff5b6e3fa115934` |
 | `stock_magisk_arm32_boot.img` | Stock kernel + 32-bit Magisk ramdisk (`16 MiB`, base used for repacking) | `56db95c2076583e9c7d81e052cda0d27f71c017ac10e8054e59a828e64f102dd` |
-| `Image_docker.lzma` | Compressed custom kernel image (`8.9 MiB`) | `c977c7666074cbe8dc7992028b0baa4667dd880b1fecf7c1e006a3ed717bd022` |
-| `Image_docker` | Uncompressed custom kernel `Image` (build output) | `14ca37f1c711c2f9ba28bd3876829e6213b62d5624d28357a772922d880d00d1` |
+| `Image_docker.lzma` | Compressed custom kernel image (`8.9 MiB`) | `6fd21dd13bca5720421fd851f84d8be4b63cf3b017827ae391972f090a443fd8` |
+| `Image_docker` | Uncompressed custom kernel `Image` (build output) | `05b542d2b6479385b45af31031100ba0918075731417dc38aeafe3fa84439d6c` |
 
 ## License
 
