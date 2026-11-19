@@ -15,3 +15,6 @@ for q in /sys/block/mmcblk0/queue; do
   echo 0 > "$q/iostats" 2>/dev/null || true
   echo 0 > "$q/add_random" 2>/dev/null || true
 done
+
+# Keep VPU at 666.67MHz (level 8) to prevent 4K60 HDR10 FIFO underruns
+echo set 8 > /sys/class/vpu/clk 2>/dev/null

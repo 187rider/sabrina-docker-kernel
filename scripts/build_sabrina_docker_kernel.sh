@@ -26,6 +26,8 @@ echo "=== 2. Configuring Hardware + Docker + NTFS3 + CIFS + BBR flags ==="
   --module CONFIG_AMLOGIC_ADC \
   --enable CONFIG_AMLOGIC_MESON_SARADC \
   --enable CONFIG_AMLOGIC_ADC_KEYPADS \
+  --enable CONFIG_AMLOGIC_RFKILL_INIT_SW_UNBLOCK \
+  --enable CONFIG_AMLOGIC_DRM_HDMI \
   --disable CONFIG_MODULE_SIG_ALL \
   --set-str CONFIG_MODULE_SIG_KEY "" \
   --set-str CONFIG_LOCALVERSION "-android14-sabrina-docker" \
